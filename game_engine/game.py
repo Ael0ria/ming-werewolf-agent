@@ -3,6 +3,7 @@ from .player import Player
 from .roles import ROLE_POOL
 from .phases import PhaseManager
 from .victory import check_victory
+from collections import defaultdict
 
 class MingWerewolfGame:
     def __init__(self, player_names=None):
@@ -84,3 +85,52 @@ class MingWerewolfGame:
 
         # 其他行动预留
         return "行动执行"
+    
+
+    def to_dict(self):
+        return {
+            "day": self.day,
+            "history": self.history.copy(),
+            "players": {
+                name: {
+                    "name": p.name,
+                    "role": p.role.name,
+                    "team": p.team,
+                    "is_alive": p.is_alive,
+                    "last_will": p.last_will
+                } for name, p in self.players.items()
+            },
+            "phase_mgr": {
+                "current": self.phase_mgr.current,
+                "speaker_order": self.phase_mgr.speaker_order.copy(),
+                "votes": dict(self.phase_mgr.votes),
+                "to_die": list(self.phase_mgr.to_die),
+                "to_exile": self.phase_mgr.to_exile,
+                "pending_tamper": self.pending_tamper
+            }
+        }
+
+    @staticmethod
+    def from_dict(data, game_instance=None):
+        if game_instance is None:
+            game_instance = MingWerewolfGame([])
+        game_instance.day = data["day"]
+        game_instance.history = data["history"]
+        game_instance.pending_tamper = data["phase_mgr"]["pending_tamper"]
+        
+        # 恢复玩家
+        for name, info in data["players"].items():
+            if name in game_instance.players:
+                p = game_instance.players[name]
+                p.is_alive = info["is_alive"]
+                p.last_will = info["last_will"]
+        
+        # 恢复阶段
+        pm = game_instance.phase_mgr
+        pm.current = data["phase_mgr"]["current"]
+        pm.speaker_order = data["phase_mgr"]["speaker_order"]
+        pm.votes = defaultdict(int, data["phase_mgr"]["votes"])
+        pm.to_die = set(data["phase_mgr"]["to_die"])
+        pm.to_exile = data["phase_mgr"]["to_exile"]
+        
+        return game_instance
