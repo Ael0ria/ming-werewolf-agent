@@ -15,6 +15,7 @@ class MingWerewolfGame:
             ]
         
         self.players = {name: Player(name) for name in player_names}
+        self.alive = set(player_names)
         self.day = 0
         self.history = []
         self.phase_mgr = PhaseManager()
@@ -70,67 +71,66 @@ class MingWerewolfGame:
 
 
     def vote(self, voter, target):
-        if self.phase_mgr.sequence[self.phase_mgr.current] != "vote":
-            return "错误，非投票阶段"
-
+        if target not in self.alive:
+            return "无效目标"
         self.phase_mgr.votes[target] += 1
+        
+        self.history.append(f"[{voter}] 投票给 [{target}]")
         return f"{voter} 投给 {target}"
 
 
-    def night_action(self, actor, action_type, target):
-        role = self.players[actor].role
-        if role.name == "魏忠贤" and action_type == "tamper":
-            self.pending_tamper = target
-            return f"魏忠贤锁定篡改目标：{target}"
+    # def night_action(self, actor, action_type, target):
+    #     role = self.players[actor].role
+    #     if role.name == "魏忠贤" and action_type == "tamper":
+    #         self.pending_tamper = target
+    #         return f"魏忠贤锁定篡改目标：{target}"
 
-        # 其他行动预留
-        return "行动执行"
+    #     # 其他行动预留
+    #     return "行动执行"
     
 
-    def to_dict(self):
-        return {
-            "day": self.day,
-            "history": self.history.copy(),
-            "players": {
-                name: {
-                    "name": p.name,
-                    "role": p.role.name,
-                    "team": p.team,
-                    "is_alive": p.is_alive,
-                    "last_will": p.last_will
-                } for name, p in self.players.items()
-            },
-            "phase_mgr": {
-                "current": self.phase_mgr.current,
-                "speaker_order": self.phase_mgr.speaker_order.copy(),
-                "votes": dict(self.phase_mgr.votes),
-                "to_die": list(self.phase_mgr.to_die),
-                "to_exile": self.phase_mgr.to_exile,
-                "pending_tamper": self.pending_tamper
-            }
-        }
+    def perform_exile(self) -> str:
+        if not self.phase_mgr.votes:
+            self.history.append("无人放逐，天黑请闭眼")
+            return "无人放逐"
 
-    @staticmethod
-    def from_dict(data, game_instance=None):
-        if game_instance is None:
-            game_instance = MingWerewolfGame([])
-        game_instance.day = data["day"]
-        game_instance.history = data["history"]
-        game_instance.pending_tamper = data["phase_mgr"]["pending_tamper"]
+        target = max(self.phase_mgr.votes, key=self.phase_mgr.votes.get)
+        self.phase_mgr.to_exile = target
+
+
+        if self.players[target].role.name == "袁崇焕":
+            alive = [n for n in self.alive if n != target]
+            if alive:
+                kill_target = random.choice(alive)
+                self.phase_mgr.to_die.add(kill_target)
+                self.history.append(f"[猎人遗言]袁崇焕反杀 {kill_target}！")
+            
         
-        # 恢复玩家
-        for name, info in data["players"].items():
-            if name in game_instance.players:
-                p = game_instance.players[name]
-                p.is_alive = info["is_alive"]
-                p.last_will = info["last_will"]
-        
-        # 恢复阶段
-        pm = game_instance.phase_mgr
-        pm.current = data["phase_mgr"]["current"]
-        pm.speaker_order = data["phase_mgr"]["speaker_order"]
-        pm.votes = defaultdict(int, data["phase_mgr"]["votes"])
-        pm.to_die = set(data["phase_mgr"]["to_die"])
-        pm.to_exile = data["phase_mgr"]["to_exile"]
-        
-        return game_instance
+        self.players[target].is_alive = False
+        self.alive.remove(target)
+        self.alive.discard(target)
+        self.history.append(f"[放逐] {target} 出局！ 票数最高！")
+        self.phase_mgr.votes.clear()
+        self.phase_mgr.to_exile = None
+        return f"放逐 {target}"
+
+
+    def process_night(self):
+        deaths = list(self.phase_mgr.to_die)
+        for target in deaths:
+            if target in self.alive:
+                self.players[target].is_alive = False
+                self.alive.remove(target)
+                self.history.append(f"[夜晚死亡] {target} 死亡！")
+        self.phase_mgr.to_die.clear()
+        if deaths:
+            self.history.append(f"昨夜死亡：{', '.join(deaths)}")
+        else:
+            self.history.append("昨夜平安")
+
+
+    def check_end(self) -> str:
+        result = check_victory(self)
+        if result:
+            self.history.append(f"[游戏结束!] {result}")
+        return result

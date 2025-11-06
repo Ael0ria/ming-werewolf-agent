@@ -5,6 +5,7 @@ class PhaseManager:
         self.sequence = ["night", "day_discuss", "vote", "exile"]
         self.current = 0
         self.speaker_order = []
+        self.voter_order = []
         self.votes = defaultdict(int)
         self.to_die = set()     # 夜晚死亡
         self.to_exile = None    # 白天放逐
@@ -16,11 +17,16 @@ class PhaseManager:
 
         if phase == "day_discuss":
             game.day += 1
-            self.speaker_order = [p.name for p in game.players.values() if p.is_alive]
+            self.speaker_order = list(game.alive)
             game.history.append(f"\n[第{game.day}天 · 白天]\n存活: {', '.join(self.speaker_order)}")
         elif phase == "night":
             self.to_die.clear()
             game.history.append(f"\n[第{game.day}天 · 夜晚]\n天黑请闭眼...")
+        elif phase == "vote":
+            self.voter_order = list(game.alive)
+            game.history.append("\n[投票阶段]")
+
+        self.votes.clear()    
 
         return phase
     

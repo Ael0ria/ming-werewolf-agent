@@ -32,27 +32,47 @@ class RoleAgent(Runnable):
         self.tool_node = ToolNode(tools)
 
     def _format_state(self, state):
-        game = state["game"]
-        return f"""
-【当前局面】
-第{game.day}天，阶段：{state['phase']}
-存活：{', '.join(state['alive'])}
-昨夜：{'平安' if not game.phase_mgr.to_die else '有死者'}
----
-【历史发言】
-{chr(10).join(game.history[-5:])}
----
-请决定你的行动或发言。
-"""
-
+        phase = state["phase"]
+        alive = ', '.join(state["alive"])
+        
+        if phase == "speak":
+            return f"""
+第{self.game.day}天，白天发言。
+存活：{alive}
+请发言，分析局面，悍跳身份或推狼。
+（使用speak_tool发言）
+            """
+        elif phase == "vote":
+            return f"""
+第{self.game.day}天，投票阶段。
+存活：{alive}
+请决定投谁，使用vote_tool(target)。
+（好人投狼，狼人乱投或自保）
+            """
+        return f"第{self.game.day}天，{phase}阶段。"
     def invoke(self, input, config=None):
-        response = self.chain.invoke(input)
-        if response.tool_calls:
-            tool_input = {"game_state": input, "current_speaker": self.player_name}
-            if "current_actor" in input:
-                tool_input["current_actor"] = self.player_name
-            tool_result = self.tool_node.invoke({"messages": [response]}, {"tool_input": tool_input})
-            return tool_result
-        return response
-    
+        messages = [
+            {"role": "system", "content": f"你是{self.role.name}，阵营为{self.role.team}"},
+            {"role": "user", "content": self._format_state(input)}
+        ]
 
+        response = self.llm.invoke(messages)
+
+        if response.tool_calls:
+            # 为每个 tool_call 添加 game_state
+            for tool_call in response.tool_calls:
+                tool_call["args"]["game_state"] = {
+                    "game": self.game,
+                    "current_speaker": self.player_name
+                }
+                if "current_voter" in input:
+                    tool_call["args"]["game_state"]["current_voter"] = input["current_voter"]
+
+            # ToolNode 执行（必须传 config）
+            tool_result = self.tool_node.invoke(
+                {"messages": [response]},
+                config={"configurable": {}}  # 必须！
+            )
+            return tool_result["messages"][-1]
+
+        return response

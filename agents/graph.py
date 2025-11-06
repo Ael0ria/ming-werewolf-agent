@@ -2,7 +2,7 @@
 from typing import TypedDict, List
 from langgraph.graph import StateGraph, END
 from langgraph.checkpoint.memory import MemorySaver
-from langchain_core.messages import AnyMessage
+from langchain_core.messages import AnyMessage, AIMessage
 from game_engine import MingWerewolfGame
 from tools import *
 from .role_agent import RoleAgent
@@ -15,65 +15,93 @@ class GameState(TypedDict):
     speaker_queue: List[str]
     current_speaker: str
     night_actors: List[str]
+    voter_queue: List[str]
+    current_voter: str
 
 def create_game_graph():
-    game = MingWerewolfGame()
     graph = StateGraph(GameState)
     
-    # 初始化角色Agent
-    agents = {}
-    for name in game.players:
-        tools = [speak_tool]
-        role = game.players[name].role
-        if role.name == "杨涟":
-            tools.append(seer_check_tool)
-        elif role.name == "魏忠贤":
-            tools.append(wei_tamper_tool)
-        agents[name] = RoleAgent(name, game, tools)
+
 
     # ====== 修复：judge_node 必须初始化 current_speaker ======
     def judge_node(state: GameState) -> GameState:
-        phase_mgr = state["game"].phase_mgr
+        game = state["game"]
+        phase_mgr = game.phase_mgr
         current_phase = phase_mgr.sequence[phase_mgr.current]
 
-        if current_phase == "night":
-            state["night_actors"] = [
-                p for p in state["alive"]
-                if state["game"].players[p].role.night_action
-            ]
-            state["phase"] = "night_action"
-        elif current_phase == "day_discuss":
-            state["speaker_queue"] = state["alive"][:]
-            state["current_speaker"] = state["speaker_queue"][0]  # 关键修复！
+        phase_mgr.next_phase(game)
+
+        if current_phase == "day_discuss":
+            state["alive"] = list(game.alive)
+            state["speaker_queue"] = list(game.alive)
+            state["current_speaker"] = state["speaker_queue"][0]
             state["phase"] = "speak"
         elif current_phase == "vote":
+            state["voter_queue"] = list(game.alive)
+            state["current_voter"] = state["voter_queue"][0]
             state["phase"] = "vote"
         elif current_phase == "exile":
-            state["phase"] = "exile"
+            game.perform_exile()
+            game.process_night()
+            result = game.check_end()
+            if result:
+                state["phase"] = "end"
+                state["messages"].append(AIMessage(content=result))
+            else:
+                state["phase"] = "day_discuss"
 
-        # 自动推进阶段
-        next_phase = phase_mgr.next_phase(state["game"])
-        state["game"].phase_mgr = phase_mgr  # 同步回去
+        elif current_phase == "night":
+            state["phase"] = "night"
+
+        # # 自动推进阶段
+        # next_phase = phase_mgr.next_phase(state["game"])
+        # state["game"].phase_mgr = phase_mgr  # 同步回去
 
         return state
 
     # ====== speak_node 保持不变 ======
     def speak_node(state: GameState) -> GameState:
-        agent = agents[state["current_speaker"]]
-        result = agent.invoke(state)
+        game = state["game"]
+        speaker = state["current_speaker"]
+        role_name = game.players[speaker].role.name
+    
+        tools = [speak_tool]
+        if role_name == "杨涟":
+            tools += [seer_check_tool]
+        elif role_name == "魏忠贤":
+            tools += [wei_tamper_tool]
+
+        agent = RoleAgent(speaker, game, tools)
+        result = agent.invoke(state, config={"configurable": {}})
+        state["messages"].append(result)
+        
+        state["speaker_queue"].pop(0)
+        if state["speaker_queue"]:
+            state["current_speaker"] = state["speaker_queue"][0]
+        else:
+            state["phase"] = "vote"
+        return state
+
+    def vote_node(state: GameState) -> GameState:
+        game = state["game"]
+        voter = state["current_voter"]
+
+        tools = [vote_tool]
+        agent = RoleAgent(voter, game, tools)
+        result = agent.invoke(state, config={"configurable": {}})
         state["messages"].append(result)
 
-        state["speaker_queue"].pop(0)
-        if not state["speaker_queue"]:
-            state["phase"] = "vote"
+        state["voter_queue"].pop(0)
+        if state["voter_queue"]:
+            state["current_voter"] = state["voter_queue"][0]
         else:
-            state["current_speaker"] = state["speaker_queue"][0]
-
+            state["phase"] ="exile"
         return state
 
     # ====== 注册节点 ======
     graph.add_node("judge", judge_node)
     graph.add_node("speak", speak_node)
+    graph.add_node("vote", vote_node)
 
     graph.set_entry_point("judge")
 
@@ -81,10 +109,22 @@ def create_game_graph():
     def route(state: GameState):
         if state["phase"] == "speak":
             return "speak"
-        return END
+        if state["phase"] == "vote":
+            return "vote"
+        if state["phase"] == "end":
+            return END
+        return "judge"
 
-    graph.add_conditional_edges("judge", lambda s: "speak" if s["phase"] == "speak" else END)
-    graph.add_conditional_edges("speak", route)
+    graph.add_conditional_edges(
+        "judge", 
+        route, 
+        {
+            "speak": "speak",
+            "vote": "vote",
+            "judge": "judge",
+            "end": END
+        })
+    graph.add_edge("speak", "judge")
+    graph.add_edge("vote", "judge")
 
-    memory = MemorySaver()
-    return graph.compile(), game, agents
+    return graph.compile()
