@@ -20,19 +20,23 @@ initial_state = {
 }
 
 print("🔥 《大明暗夜录》启动！")
+
+
 day = 0
+last_msg_count = 0  # 记录已打印的消息数
 config = {"configurable": {}, "recursion_limit": 10000}
-last_msg_count = 0
+print("《大明暗夜录》启动！")
+print("=" * 60)
 
 for output in app.stream(initial_state, config):
     node = next(iter(output))
     data = output[node]
 
+    # 1. 新的一天
     if node == "judge" and data.get("phase") == "speak":
         day += 1
-        print(f"\n{'='*60}")
-        print(f"第{day}天 白天发言  存活：{len(game.alive)}人")
-        print(f"{'='*60}")
+        print(f"\n第{day}天 白天发言  存活：{len(game.alive)}人")
+        print("=" * 60)
 
     # 2. 发言：打印所有新增发言
     if node == "speak" and data.get("messages"):
@@ -45,9 +49,9 @@ for output in app.stream(initial_state, config):
                 text = content.split(":", 1)[1].strip()
                 print(f"{speaker}：{text}")
                 print("-"*50)
-        last_msg_count = len(current_msgs)  # 更新
+        last_msg_count = len(current_msgs)
 
-    # 3. 投票：同理增量打印
+    # 3. 投票：增量打印
     if node == "vote" and data.get("messages"):
         current_msgs = data["messages"]
         new_msgs = current_msgs[last_msg_count:]
@@ -64,9 +68,10 @@ for output in app.stream(initial_state, config):
             print(f"{getattr(msg, 'content', str(msg))}")
         last_msg_count = len(current_msgs)
 
-    # 5. 胜负
+    # 5. 游戏结束
     if data.get("phase") == "end":
-        print(f"\n{getattr(data['messages'][-1], 'content', '')}")
+        final_msg = data["messages"][-1].content if data["messages"] else "游戏结束"
+        print(f"\n{final_msg}")
         break
 
 # print("\n🎉 【完整游戏日志】")
