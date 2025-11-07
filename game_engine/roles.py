@@ -7,6 +7,8 @@ class Role:
     team: str
     description: str
     night_action: bool = False
+    has_poison: bool = False
+    has_medicine: bool = False
 
 
 # ====================双狼阵营====================
@@ -27,7 +29,7 @@ class Role:
 卢象升 = Role("卢象升", "明廷", "悍将平民，无技能", night_action=False)
 
 # ====================第三方====================
-李自成 = Role("李自成", "农民军", "女巫+丘比特：有毒有解，可联两人", night_action=True)
+李自成 = Role("李自成", "农民军", "女巫+丘比特：有毒有解，可联两人", night_action=True, has_poison=True, has_medicine=True)
 
 
 ROLE_POOL = [

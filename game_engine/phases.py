@@ -10,6 +10,8 @@ class PhaseManager:
         self.to_die = set()     # 夜晚死亡
         self.to_exile = None    # 白天放逐
 
+        self.wolf_knife = set()
+        self.witch_poison = set()
     
     def next_phase(self, game):
         self.current = (self.current + 1) % len(self.sequence)
@@ -17,16 +19,12 @@ class PhaseManager:
 
         if phase == "day_discuss":
             game.day += 1
-            self.speaker_order = list(game.alive)
-            game.history.append(f"\n[第{game.day}天 · 白天]\n存活: {', '.join(self.speaker_order)}")
-        elif phase == "night":
-            self.to_die.clear()
-            game.history.append(f"\n[第{game.day}天 · 夜晚]\n天黑请闭眼...")
+            game.history.append(f"\n【第{game.day}天】存活：{', '.join(game.alive)}")
         elif phase == "vote":
-            self.voter_order = list(game.alive)
-            game.history.append("\n[投票阶段]")
-
-        self.votes.clear()    
+            game.history.append("【投票阶段】")
+            self.votes.clear()  # 关键！清空上一轮票数
+        elif phase == "night":
+            game.history.append("天黑请闭眼...")
 
         return phase
     

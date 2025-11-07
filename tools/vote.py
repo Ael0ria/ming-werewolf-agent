@@ -2,11 +2,12 @@ from langchain_core.tools import tool
 from typing import Annotated
 
 @tool
-def vote_tool(
-    target: Annotated[str, "要投票放逐的玩家姓名"],
-    game_state: Annotated[dict, "当前游戏状态"]
-) -> str:
-    """投票阶段，投票放逐一人"""
+def vote_tool(target: str, game_state: dict) -> str:
+    """ 投票"""
     game = game_state["game"]
     voter = game_state["current_voter"]
-    return game.vote(voter, target)
+
+    if target not in game.alive:
+        return f"[无效] {target} 已出局"
+    game.phase_mgr.votes[target] += 1
+    return f"【投票】{voter} -> {target}  （当前{game.phase_mgr.votes[target]} 票）"

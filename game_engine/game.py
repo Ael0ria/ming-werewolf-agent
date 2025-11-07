@@ -20,6 +20,8 @@ class MingWerewolfGame:
         self.history = []
         self.phase_mgr = PhaseManager()
         self.pending_tamper = None  # 魏忠贤篡改目标
+        self.guard_target = None
+        self.witch_knows_death = False
         self.assign_roles()
 
 
@@ -29,6 +31,9 @@ class MingWerewolfGame:
         for name, player in self.players.items():
             player.role = roles.pop()
             player.team = player.role.team
+            if player.role.name == "李自成":
+                player.role.has_poison = True
+                player.role.has_medicine = True
         self.history.append("[身份分配完成]天黑请闭眼...")
 
     
@@ -77,56 +82,51 @@ class MingWerewolfGame:
         
         self.history.append(f"[{voter}] 投票给 [{target}]")
         return f"{voter} 投给 {target}"
-
-
-    # def night_action(self, actor, action_type, target):
-    #     role = self.players[actor].role
-    #     if role.name == "魏忠贤" and action_type == "tamper":
-    #         self.pending_tamper = target
-    #         return f"魏忠贤锁定篡改目标：{target}"
-
-    #     # 其他行动预留
-    #     return "行动执行"
     
+
 
     def perform_exile(self) -> str:
         if not self.phase_mgr.votes:
-            self.history.append("无人放逐，天黑请闭眼")
-            return "无人放逐"
+            return "【无人放逐】"
 
-        target = max(self.phase_mgr.votes, key=self.phase_mgr.votes.get)
-        self.phase_mgr.to_exile = target
+        # 找最高票
+        max_votes = max(self.phase_mgr.votes.values())
+        candidates = [p for p, v in self.phase_mgr.votes.items() if v == max_votes]
+        target = random.choice(candidates) if len(candidates) > 1 else candidates[0]
 
-
-        if self.players[target].role.name == "袁崇焕":
-            alive = [n for n in self.alive if n != target]
-            if alive:
-                kill_target = random.choice(alive)
-                self.phase_mgr.to_die.add(kill_target)
-                self.history.append(f"[猎人遗言]袁崇焕反杀 {kill_target}！")
-            
-        
+        # 执行放逐
         self.players[target].is_alive = False
         self.alive.remove(target)
-        self.alive.discard(target)
-        self.history.append(f"[放逐] {target} 出局！ 票数最高！")
+
+        result = f"【放逐】{target} 出局！({max_votes}票)"
+        self.history.append(result)
+
+        # 清空票数（防止累加）
         self.phase_mgr.votes.clear()
-        self.phase_mgr.to_exile = None
-        return f"放逐 {target}"
+        return result   
 
-
-    def process_night(self):
+    def process_night(self) -> str:
         deaths = list(self.phase_mgr.to_die)
-        for target in deaths:
-            if target in self.alive:
-                self.players[target].is_alive = False
-                self.alive.remove(target)
-                self.history.append(f"[夜晚死亡] {target} 死亡！")
+        details = []
+        for t in deaths:
+            if t in self.alive:
+                self.players[t].is_alive = False
+                self.alive.remove(t)
+                if t in self.phase_mgr.wolf_knife:
+                    details.append(f"{t}被狼刀死")
+                elif t in self.phase_mgr.witch_poison:
+                    details.append(f"{t}被巫师毒死")
+              
+                # self.history.append(f"【死亡】{t}")
         self.phase_mgr.to_die.clear()
+        self.phase_mgr.wolf_knife.clear()
+        self.phase_mgr.witch_poison.clear()
         if deaths:
-            self.history.append(f"昨夜死亡：{', '.join(deaths)}")
+            result = f"昨夜死亡：{', '.join(deaths)}"
         else:
-            self.history.append("昨夜平安")
+            result = "昨夜平安夜"
+        self.history.append(result)
+        return result
 
 
     def check_end(self) -> str:

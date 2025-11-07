@@ -1,8 +1,9 @@
 from langchain_core.runnables import Runnable
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import ToolNode
-from typing import List
-from .prompts import ROLE_PROMPTS
+from typing import List, Dict
+from langchain_core.messages import AnyMessage, AIMessage
+
 import os
 
 class RoleAgent(Runnable):
@@ -18,41 +19,37 @@ class RoleAgent(Runnable):
             api_key=os.getenv("DASHSCOPE_API_KEY")
         ).bind_tools(tools)
         
-        prompt = ROLE_PROMPTS.get(self.role.name, ROLE_PROMPTS["default"]).format(
-            team=self.team, role=self.role.name
-        )
+        # prompt = ROLE_PROMPTS.get(self.role.name, ROLE_PROMPTS["default"]).format(
+        #     team=self.team, role=self.role.name
+        # )
         
-        self.chain = (
-            {"messages": lambda x: x["messages"] + [
-                {"role": "system", "content": prompt},
-                {"role": "user", "content": self._format_state(x)}
-            ]}
-            | self.llm
-        )
+        # self.chain = (
+        #     {"messages": lambda x: x["messages"] + [
+        #         {"role": "system", "content": prompt},
+        #         {"role": "user", "content": self._format_state(x)}
+        #     ]}
+        #     | self.llm
+        # )
+        self.system_prompt = f"""
+        你现在是[{self.player_name}]，真实身份是[{self.role.name}]，阵营是[{self.team}]。
+        你必须以第一人称发言，风格符合历史人物性格。
+        禁止说“我是AI”或“我是模拟”。
+        你正在第{self.game.day}天，存活玩家：{', '.join(self.game.alive)}
+        """.strip()
+
         self.tool_node = ToolNode(tools)
 
-    def _format_state(self, state):
+    def _format_state(self, state: Dict) -> str:
         phase = state["phase"]
-        alive = ', '.join(state["alive"])
-        
+        alive = ', '.join(state.get("alive", []))
         if phase == "speak":
-            return f"""
-第{self.game.day}天，白天发言。
-存活：{alive}
-请发言，分析局面，悍跳身份或推狼。
-（使用speak_tool发言）
-            """
+            return f"第{self.game.day}天，白天发言。存活：{alive}\n请发言或使用工具。"
         elif phase == "vote":
-            return f"""
-第{self.game.day}天，投票阶段。
-存活：{alive}
-请决定投谁，使用vote_tool(target)。
-（好人投狼，狼人乱投或自保）
-            """
-        return f"第{self.game.day}天，{phase}阶段。"
-    def invoke(self, input, config=None):
+            return f"第{self.game.day}天，投票阶段。存活：{alive}\n请使用vote_tool投票。"
+        return "请行动。"
+    def invoke(self, input, config=None) -> AIMessage:
         messages = [
-            {"role": "system", "content": f"你是{self.role.name}，阵营为{self.role.team}"},
+            {"role": "system", "content": self.system_prompt},
             {"role": "user", "content": self._format_state(input)}
         ]
 
@@ -63,16 +60,17 @@ class RoleAgent(Runnable):
             for tool_call in response.tool_calls:
                 tool_call["args"]["game_state"] = {
                     "game": self.game,
-                    "current_speaker": self.player_name
+                    "current_speaker": self.player_name,
+                    "current_voter": input.get("current_voter"),
+                    "current_actor": input.get("current_actor")
                 }
-                if "current_voter" in input:
-                    tool_call["args"]["game_state"]["current_voter"] = input["current_voter"]
 
-            # ToolNode 执行（必须传 config）
+
             tool_result = self.tool_node.invoke(
                 {"messages": [response]},
-                config={"configurable": {}}  # 必须！
+                config={"configurable": {}} 
             )
-            return tool_result["messages"][-1]
+            tool_msg = tool_result["messages"][-1]
+            return AIMessage(content=tool_msg.content)
 
         return response
