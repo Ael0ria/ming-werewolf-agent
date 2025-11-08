@@ -39,7 +39,7 @@ graph TD
 ```
 
 ### 快速开始
-bash# 1. 克隆项目
+# 1. 克隆项目
 git clone https://github.com/yourname/ming-werewolf-agent.git
 cd ming-werewolf-agent
 
