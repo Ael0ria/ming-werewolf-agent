@@ -6,12 +6,14 @@ from langchain_core.messages import AnyMessage, AIMessage
 
 import os
 
-class RoleAgent(Runnable):
+class RoleAgent:
     def __init__(self, player_name: str, game_ref, tools: List):
         self.player_name = player_name
         self.game = game_ref
-        self.role = game_ref.players[player_name].role
-        self.team = game_ref.players[player_name].team
+        player = game_ref.players[player_name]
+        self.role_name = player.role.name
+        self.team = player.role.team
+        self.description = player.role.description
         
         self.llm = ChatOpenAI(
             model="qwen-plus",
@@ -31,7 +33,7 @@ class RoleAgent(Runnable):
         #     | self.llm
         # )
         self.system_prompt = f"""
-        你现在是[{self.player_name}]，真实身份是[{self.role.name}]，阵营是[{self.team}]。
+        你现在是[{self.player_name}]，真实身份是[{self.role_name}]，阵营是[{self.team}]。
         你必须以第一人称发言，风格符合历史人物性格。
         禁止说“我是AI”或“我是模拟”。
         你正在第{self.game.day}天，存活玩家：{', '.join(self.game.alive)}

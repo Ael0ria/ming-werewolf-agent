@@ -6,35 +6,42 @@ from .victory import check_victory
 from collections import defaultdict
 
 class MingWerewolfGame:
-    def __init__(self, player_names=None):
-        if player_names is None:
-            player_names = [
-                "杨涟", "魏忠贤", "皇太极", "孙承宗", "袁崇焕",
-                "钱谦益", "史可法", "吴伟业", "郑森", "卢象升",
-                "李自成"
-            ]
+    def __init__(self, player_role=None):
         
-        self.players = {name: Player(name) for name in player_names}
-        self.alive = set(player_names)
+
+
+        self.players = {}
+        print(f"[DEBUG] player_role: {player_role}")
+        for i, role_obj in enumerate(ROLE_POOL):
+            name = role_obj.name
+            player = Player(name, role_obj.team, role_obj)
+            if name == player_role:
+                player.is_player = True
+                print(f"[DEBUG] 设置玩家: {name} -> is_player=True")
+            self.players[name] = player
+            print(f"[DEBUG] players[{name}].role.name = {player.role.name}")
+
+
+        self.alive = set(self.players.keys())
         self.day = 0
         self.history = []
         self.phase_mgr = PhaseManager()
         self.pending_tamper = None  # 魏忠贤篡改目标
         self.guard_target = None
         self.witch_knows_death = False
-        self.assign_roles()
+        # self.assign_roles()
 
 
-    def assign_roles(self):
-        roles = ROLE_POOL.copy()
-        random.shuffle(roles)
-        for name, player in self.players.items():
-            player.role = roles.pop()
-            player.team = player.role.team
-            if player.role.name == "李自成":
-                player.role.has_poison = True
-                player.role.has_medicine = True
-        self.history.append("[身份分配完成]天黑请闭眼...")
+    # def assign_roles(self):
+    #     roles = ROLE_POOL.copy()
+    #     random.shuffle(roles)
+    #     for name, player in self.players.items():
+    #         player.role = roles.pop()
+    #         player.team = player.role.team
+    #         if player.role.name == "李自成":
+    #             player.role.has_poison = True
+    #             player.role.has_medicine = True
+    #     self.history.append("[身份分配完成]天黑请闭眼...")
 
     
     def start(self):
@@ -85,25 +92,25 @@ class MingWerewolfGame:
     
 
 
-    def perform_exile(self) -> str:
-        if not self.phase_mgr.votes:
-            return "【无人放逐】"
+    # def perform_exile(self) -> str:
+    #     if not self.phase_mgr.votes:
+    #         return "【无人放逐】"
 
-        # 找最高票
-        max_votes = max(self.phase_mgr.votes.values())
-        candidates = [p for p, v in self.phase_mgr.votes.items() if v == max_votes]
-        target = random.choice(candidates) if len(candidates) > 1 else candidates[0]
+    #     # 找最高票
+    #     max_votes = max(self.phase_mgr.votes.values())
+    #     candidates = [p for p, v in self.phase_mgr.votes.items() if v == max_votes]
+    #     target = random.choice(candidates) if len(candidates) > 1 else candidates[0]
 
-        # 执行放逐
-        self.players[target].is_alive = False
-        self.alive.remove(target)
+    #     # 执行放逐
+    #     self.players[target].is_alive = False
+    #     self.alive.remove(target)
 
-        result = f"【放逐】{target} 出局！({max_votes}票)"
-        self.history.append(result)
+    #     result = f"【放逐】{target} 出局！({max_votes}票)"
+    #     self.history.append(result)
 
-        # 清空票数（防止累加）
-        self.phase_mgr.votes.clear()
-        return result   
+    #     # 清空票数（防止累加）
+    #     self.phase_mgr.votes.clear()
+    #     return result   
 
     def process_night(self) -> str:
         deaths = list(self.phase_mgr.to_die)
