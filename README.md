@@ -54,6 +54,6 @@ pip install -r requirements.txt
 export OPENAI_API_KEY="sk-xxx"
 
 # 5. 运行游戏
-python test_graph.py
+python main.py
 
 
