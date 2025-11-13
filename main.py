@@ -58,24 +58,15 @@ for output in app.stream(initial_state, config):
     # 1. 新的一天
     if node == "judge" and data.get("phase") == "speak":
         day += 1
-        print(f"\n第{day}天 白天发言  存活：{len(game.alive)}人")
+        # print(f"\n第{day}天 白天发言  存活：{len(game.alive)}人")
         print("=" * 60)
 
-    # 2. 发言：打印所有新增发言
-    if node == "speak" and data.get("messages"):
-        current_msgs = data["messages"]
-        new_msgs = current_msgs[last_msg_count:]  # 增量
-        for msg in new_msgs:
-            content = getattr(msg, 'content', str(msg))
-            if "[发言]" in content:
-                parts = content.split("[发言]", 1)[1].strip()
-                speaker_text = parts.split(":", 1)
-                if len(speaker_text) >= 2:
-                    speaker = speaker_text[0].strip()
-                    text = speaker_text[1].strip()
-                    print(f"{speaker}：{text}")
-                    print("-" * 60)
-        last_msg_count = len(current_msgs)
+    if node == "speak" and "messages" in data:
+        for msg in data["messages"]:
+            content = getattr(msg, 'content', '')
+            if "玩家" in content and ("：" or ":") in content:
+                print(content)
+                print("-" * 60)
 
     # 3. 投票：增量打印
     if node == "vote" and data.get("messages"):
@@ -99,7 +90,3 @@ for output in app.stream(initial_state, config):
         final_msg = data["messages"][-1].content if data["messages"] else "游戏结束"
         print(f"\n{final_msg}")
         break
-
-# print("\n🎉 【完整游戏日志】")
-# print("\n".join(game.history[-20:]))
-# print(f"\n最终胜者：{game.check_end() or '继续中'}")

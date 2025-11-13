@@ -12,6 +12,7 @@ class PhaseManager:
 
         self.wolf_knife = set()
         self.witch_poison = set()
+        self.witch_heal = set()
     
     def next_phase(self, game):
         self.current = (self.current + 1) % len(self.sequence)

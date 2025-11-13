@@ -6,7 +6,7 @@ class Player:
         self.role = role
         self.is_alive = True
         self.is_player = False
-        # self.last_will = ""
+
 
     def __str__(self):
         return f"{self.name} ({'存活' if self.is_alive else '阵亡'})"

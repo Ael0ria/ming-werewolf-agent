@@ -11,12 +11,50 @@ class RoleAgent:
         self.player_name = player_name
         self.game = game_ref
         player = game_ref.players[player_name]
+        self.role = game_ref.players[player_name].role
         self.role_name = player.role.name
         self.team = player.role.team
         self.description = player.role.description
+        self.vid = game_ref.id_mapping[player_name]
+
+        self.system_prompt = f"""
+你正在玩《大明暗夜录》狼人杀游戏。
+你的编号：{self.vid}
+你的真实身份：{self.role.name}({self.team})
+【重要规则】：
+1. 不要在发言开口写"【发言】{self.vid}"等内容，直接说发言内容。
+2. 不要说明自己的真实身份，当然也可以说自己的名字用真诚打动别人，或者说其他人的名字来混淆视听，或者什么名字都不说，也可以说自己是预言家等等，一切有自己决定！
+3. 发言要像真实朝堂辩论，逻辑严密，混淆/推断视身份而定
+4. 如果你是女巫，你会知道当天晚上谁被刀了，你可以选择用解药就此人或坐视不管，或者选择毒杀某人，每个回合只能做一次决定。
+5. 狼人知道同伴，可以查看同伴的技能。
+""" 
+        if player_name == "杨涟":
+            self.system_prompt += f"""
+        【白天发言】
+        - 你是预言家，昨晚查验了玩家X
+        - 第一天发言不能预言，只能从第二天开始才可以
+        - 必须跳身份：说“我是预言家，昨晚查了玩家X，是[好人/狼人]”
+        - 不要只说查验结果，要结合正常的发言来说
+        - 不能说“查验结果”，要像真人一样推理
+        - 存活玩家：{', '.join(game_ref.id_mapping[n] for n in game_ref.alive)}
+        """
+
+        if self.team in ["阉党", "后金"]:  # 狼人知道同伴
+            wolf_companions = [name for name, p in game_ref.players.items() 
+                             if p.role.team in ["阉党", "后金"] and name != player_name]
+            if wolf_companions:
+                self.system_prompt += f"\n你的狼人同伴：{', '.join(wolf_companions)}"
+        else:  # 好人匿名视角
+            self.system_prompt += f"\n所有玩家都是匿名编号：{game_ref.id_mapping}"
+            self.system_prompt += f"\n你的编号：{game_ref.id_mapping[player_name]}"
+        
+
+        # 技能提示
+        if self.role.night_action:
+            self.system_prompt += f"\n夜晚可行动：{self.role.description}"
         
         self.llm = ChatOpenAI(
-            model="qwen-plus",
+            model="qwen-plus-latest",
             base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
             api_key=os.getenv("DASHSCOPE_API_KEY")
         ).bind_tools(tools)
@@ -32,12 +70,7 @@ class RoleAgent:
         #     ]}
         #     | self.llm
         # )
-        self.system_prompt = f"""
-        你现在是[{self.player_name}]，真实身份是[{self.role_name}]，阵营是[{self.team}]。
-        你必须以第一人称发言，风格符合历史人物性格。
-        禁止说“我是AI”或“我是模拟”。
-        你正在第{self.game.day}天，存活玩家：{', '.join(self.game.alive)}
-        """.strip()
+        
 
         self.tool_node = ToolNode(tools)
 

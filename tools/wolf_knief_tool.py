@@ -2,7 +2,7 @@ from langchain.tools import tool
 from typing import Any
 
 @tool
-def wolf_kill(target: str, game_state: dict) -> str:
+def wolf_knife_tool(target: str, game_state: dict) -> str:
     """
     狼人夜晚刀人
     """

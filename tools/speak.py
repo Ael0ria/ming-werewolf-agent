@@ -5,7 +5,8 @@ from typing import Annotated
 def speak_tool(content: str, game_state: dict) -> str:
     """发言阶段，玩家发言"""
     game = game_state["game"]
-    speaker = game_state["current_speaker"]
+    speaker = game_state["current_speaker"]  # 真实姓名
     result = game.speak(speaker, content)
-    return f"【发言】{speaker}: {content}"  
+
+    return content.strip()
 
