@@ -1,4 +1,4 @@
-# 大明暗夜录  
+# 大明暗夜录  【已完结】
 **AI 驱动的历史狼人杀 · 明末权谋 · 4大史诗结局**
 
 [![Python](https://img.shields.io/badge/Python-3.11-blue)](https://www.python.org/)
@@ -35,7 +35,7 @@ graph TD
     D --> E[死亡结算]
     E --> F{胜负？}
     F -->|继续| A
-    F -->|结束| G[史诗结局]
+    F -->|结束| G[结局]
 ```
 
 ### 快速开始
@@ -54,6 +54,12 @@ pip install -r requirements.txt
 export OPENAI_API_KEY="sk-xxx"
 
 # 5. 运行游戏
-python main.py
+python web_demo.py
+
+# 6. 演示视频
+
+
+https://github.com/user-attachments/assets/010fb7dd-d0c4-4a31-9522-46afb665fbbe
+
 
 
