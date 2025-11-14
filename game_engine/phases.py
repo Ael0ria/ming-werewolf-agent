@@ -23,7 +23,7 @@ class PhaseManager:
             game.history.append(f"\n【第{game.day}天】存活：{', '.join(game.alive)}")
         elif phase == "vote":
             game.history.append("【投票阶段】")
-            self.votes.clear()  # 关键！清空上一轮票数
+            self.votes.clear() 
         elif phase == "night":
             game.history.append("天黑请闭眼...")
 

@@ -7,6 +7,9 @@ from langchain_core.messages import AnyMessage, AIMessage
 import os
 
 class RoleAgent:
+    current_game = None
+    current_player = None
+
     def __init__(self, player_name: str, game_ref, tools: List):
         self.player_name = player_name
         self.game = game_ref
@@ -16,6 +19,8 @@ class RoleAgent:
         self.team = player.role.team
         self.description = player.role.description
         self.vid = game_ref.id_mapping[player_name]
+        RoleAgent.current_game = game_ref
+        RoleAgent.current_player = player_name
 
         self.system_prompt = f"""
 你正在玩《大明暗夜录》狼人杀游戏。
@@ -58,18 +63,7 @@ class RoleAgent:
             base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
             api_key=os.getenv("DASHSCOPE_API_KEY")
         ).bind_tools(tools)
-        
-        # prompt = ROLE_PROMPTS.get(self.role.name, ROLE_PROMPTS["default"]).format(
-        #     team=self.team, role=self.role.name
-        # )
-        
-        # self.chain = (
-        #     {"messages": lambda x: x["messages"] + [
-        #         {"role": "system", "content": prompt},
-        #         {"role": "user", "content": self._format_state(x)}
-        #     ]}
-        #     | self.llm
-        # )
+    
         
 
         self.tool_node = ToolNode(tools)
@@ -91,15 +85,6 @@ class RoleAgent:
         response = self.llm.invoke(messages)
 
         if response.tool_calls:
-            # 为每个 tool_call 添加 game_state
-            for tool_call in response.tool_calls:
-                tool_call["args"]["game_state"] = {
-                    "game": self.game,
-                    "current_speaker": self.player_name,
-                    "current_voter": input.get("current_voter"),
-                    "current_actor": input.get("current_actor")
-                }
-
 
             tool_result = self.tool_node.invoke(
                 {"messages": [response]},

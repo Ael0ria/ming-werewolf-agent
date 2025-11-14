@@ -10,88 +10,40 @@ from game_engine.victory import check_victory
 import threading
 import operator
 
-# Reducer: always take the newest value
+from queue import Queue
+input_queue  = Queue()
+output_queue = Queue()
 def replace_value(old, new):
     return new
 
 class GameState(TypedDict):
-    # Game state object — must be replaced entirely each time
     game: Annotated[MingWerewolfGame, replace_value]
-    
-    # Phase control — only one value allowed per step
     phase: Annotated[str, replace_value]
-    
-    # Message history — accumulate
     messages: Annotated[List[BaseMessage], operator.add]
-    
-    # Day counter
     day: Annotated[int, replace_value]
-    
-    # Alive player names (for reference)
     alive: Annotated[List[str], replace_value]
-    
-    # Speaking queue
     speaker_queue: Annotated[List[str], replace_value]
     current_speaker: Annotated[Optional[str], replace_value]
-    
-    # Night action actors
     night_actors: Annotated[List[str], replace_value]
-    
-    # Voting
     voter_queue: Annotated[List[str], replace_value]
     current_voter: Annotated[Optional[str], replace_value]
-    votes: Annotated[Dict[str, List[str]], replace_value]  # reset after exile
+    votes: Annotated[Dict[str, List[str]], replace_value] 
 
 
 def create_game_graph():
     graph = StateGraph(GameState)
 
-    # === Shared input handling (thread-safe) ===
-    _player_input = None
-    _input_ready = threading.Event()
 
-    _player_vote = None
-    _vote_ready = threading.Event()
-
-    _player_night_action = None
-    _night_action_ready = threading.Event()
-
-    def _speak_input_with_timeout():
-        global _player_input
-        try:
-            _player_input = input("\n> ")
-        except:
-            _player_input = None
-        finally:
-            _input_ready.set()
-
-    def _vote_input_with_timeout():
-        global _player_vote
-        try:
-            _player_vote = input("\n> ").strip()
-        except:
-            _player_vote = None
-        finally:
-            _vote_ready.set()
-
-    def _night_input_with_timeout():
-        global _player_night_action
-        try:
-            _player_night_action = input("\n> ").strip()
-        except:
-            _player_night_action = None
-        finally:
-            _night_action_ready.set()
-
+    
     
     def judge_node(state: GameState) -> dict:
         current_phase = state.get("phase", "unknown")
-        print(f"[DEBUG] judge_node called, current_phase = '{current_phase}'")
+        # print(f"[DEBUG] judge_node called, current_phase = '{current_phase}'")
         game = state["game"]
         current_phase = state["phase"]
         messages = state["messages"].copy()
 
-        # 游戏结束检查（可在任何阶段后触发）
+   
         victory = check_victory(game)
         if victory:
             messages.append(AIMessage(content=f"[游戏结束] {victory}"))
@@ -102,7 +54,7 @@ def create_game_graph():
             }
 
         if current_phase == "night_action":
-            # 夜晚刚结束 → 进入白天发言
+            # 夜晚结束 → 进入白天发言
             night_msg = game.process_night()
             messages.append(AIMessage(content=night_msg))
 
@@ -120,7 +72,7 @@ def create_game_graph():
             print(f"\n第{day}天 白天开始")
             return {
                 "phase": "speak",
-                "speaker_queue": [],   # 触发 speak_node 初始化
+                "speaker_queue": [],   
                 "voter_queue": [],
                 "votes": {},
                 "messages": messages,
@@ -130,7 +82,7 @@ def create_game_graph():
             }
 
         elif current_phase == "exile":
-            # 放逐刚结束 → 进入夜晚
+            # 放逐结束 → 进入夜晚
             return {
                 "phase": "night_action",
                 "speaker_queue": [],
@@ -186,24 +138,21 @@ def create_game_graph():
             print(f"身份：{speaker.role.name} | 阵营：{speaker.role.team}")
             print("请在 5 分钟内输入发言内容（超时沉默）")
 
-            global _player_input
-            _player_input = None
-            _input_ready.clear()
-            thread = threading.Thread(target=_speak_input_with_timeout, daemon=True)
-            thread.start()
-
-            if _input_ready.wait(300):
-                text = _player_input.strip() or "(沉默)"
-            else:
+            try:
+                text = input_queue.get(timeout=300)
+                text = text.strip() if text else "(沉默)"
+            except:
                 text = "(超时沉默)"
 
             msg = f"玩家{vid.split('玩家')[1]}：{text}"
+
         else:
             print(f"\n【{vid} 发言中...】")
             tools = [speak_tool]
             agent = RoleAgent(current_speaker, game, tools)
             result = agent.invoke(state, config={"configurable": {"current_speaker": current_speaker}})
             clean_text = result.content.strip()
+            print(f"玩家{vid.split('玩家')[1]}：{clean_text}")
             msg = f"玩家{vid.split('玩家')[1]}：{clean_text}"
 
         new_queue = state["speaker_queue"][1:]
@@ -244,25 +193,20 @@ def create_game_graph():
             print(f"存活玩家：{', '.join(alive_ids)}")
             print("请输入你要投票放逐的玩家编号（如 玩家1），5分钟超时随机投票")
 
-            global _player_vote
-            _player_vote = None
-            _vote_ready.clear()
-            thread = threading.Thread(target=_vote_input_with_timeout, daemon=True)
-            thread.start()
+        
 
-            if _vote_ready.wait(300):
-                target_input = _player_vote.strip() if _player_vote else ""
-                if target_input in alive_ids:
-                    target_id = target_input
-                    print(f"你投票给：{target_id}")
-                else:
-                    target_name = random.choice([n for n in alive_names if n != voter_name])
-                    target_id = id_map[target_name]
-                    print(f"输入无效，随机投票给：{target_id}")
+            try:
+                target_input = input_queue.get(timeout=300).strip()
+            except:
+                target_input = ""
+
+            if target_input in alive_ids:
+                target_id = target_input
+                print(f"你投票给：{target_id}")
             else:
                 target_name = random.choice([n for n in alive_names if n != voter_name])
                 target_id = id_map[target_name]
-                print(f"超时，随机投票给：{target_id}")
+                print(f"输入无效或超时，随机投票给：{target_id}")
         else:
             print(f"\n【{voter_id} 投票中...】")
             tools = [vote_tool]
@@ -278,6 +222,7 @@ def create_game_graph():
                 target_name = random.choice([n for n in alive_names if n != voter_name])
                 target_id = id_map[target_name]
             print(f"{voter_id} → {target_id}")
+            
 
         current_votes = state.get("votes", {})
         current_votes[target_id] = current_votes.get(target_id, []) + [voter_name]
@@ -332,11 +277,25 @@ def create_game_graph():
         if exiled_name in game.alive:
             game.alive.remove(exiled_name)
 
+        new_messages = state["messages"].copy()
+        victory = check_victory(game)
+        if victory:
+            new_messages.append(AIMessage(content=f"[游戏结束] {victory}"))
+            print(f"\n[游戏结束] {victory}")
+            return {
+                "messages": new_messages,
+                "game": game,
+                "alive": list(game.alive),
+                "speaker_queue": [],
+                "voter_queue": [],
+                "votes": {},
+                "phase": "end"
+            }
+
         print(f"存活人数：{len(game.alive)}人")
         print("=" * 60)
 
         return {
-            # "phase": "night_action",
             "votes": {},
             "voter_queue": [],
             "alive": list(game.alive),
@@ -344,7 +303,7 @@ def create_game_graph():
         }
 
     def night_action_node(state: GameState) -> dict:
-        print("[DEBUG] 🌙 Night action started!")
+        # print("[DEBUG]  Night action started!")
         game = state["game"]
         alive = set(game.alive)
         player_name = None
@@ -370,26 +329,20 @@ def create_game_graph():
             print(f"存活玩家：{', '.join(targetable_ids)}")
             print("请输入你要刀的玩家编号（如 玩家1），5分钟超时随机刀一人：")
 
-            global _player_night_action
-            _player_night_action = None
-            _night_action_ready.clear()
-            thread = threading.Thread(target=_night_input_with_timeout, daemon=True)
-            thread.start()
+            
+            try:
+                target_input = input_queue.get(timeout=300).strip()
+            except:
+                target_input = ""
 
-            if _night_action_ready.wait(300):
-                target_input = _player_night_action.strip()
-                if target_input in targetable_ids:
-                    target_id = target_input
-                    target_name = rev_map[target_id]
-                    print(f"你刀 → {target_id}")
-                else:
-                    target_name = random.choice([n for n in alive if n != player_name])
-                    target_id = id_map[target_name]
-                    print(f"输入无效，随机刀：{target_id}")
+            if target_input in targetable_ids:
+                target_id = target_input   
+                target_name = rev_map[target_id]
+                print(f"你刀 → {target_id}")
             else:
                 target_name = random.choice([n for n in alive if n != player_name])
                 target_id = id_map[target_name]
-                print(f"超时，随机刀：{target_id}")
+                print(f"输入无效，随机刀：{target_id}")
 
             final_knife_targets.add(target_name)
             print(f"【狼人刀】{player_id} → {target_id}")
@@ -452,7 +405,8 @@ def create_game_graph():
         game.phase_mgr.wolf_knife.clear()
 
         # Witch logic (李自成)
-        if "李自成" in alive:
+        witch_name = "李自成"
+        if witch_name in alive:
             witch = game.players["李自成"]
             has_poison = witch.role.has_poison
             has_medicine = witch.role.has_medicine
@@ -469,40 +423,57 @@ def create_game_graph():
                 print("  空 放弃行动")
                 print("（5分钟超时自动放弃）")
 
-                _player_night_action = None
-                _night_action_ready.clear()
-                thread = threading.Thread(target=_night_input_with_timeout, daemon=True)
-                thread.start()
+            
+                try:
+                    action = input_queue.get(timeout=300).strip().lower()
+                except:
+                    action = ""
 
-                if _night_action_ready.wait(300):
-                    action = _player_night_action.strip().lower()
-                    if action.startswith("毒 ") and has_poison:
-                        target_input = action[2:].strip()
-                        if target_input in game.id_mapping.values() and target_input != witch_id:
-                            target_name = game.reverse_mapping[target_input]
-                            game.phase_mgr.witch_poison.add(target_name)
-                            witch.role.has_poison = False
-                            print(f"你毒 → {target_input}")
-                    elif action.startswith("救 ") and has_medicine:
-                        target_input = action[2:].strip()
-                        if target_input in [game.id_mapping[n] for n in game.phase_mgr.wolf_knife]:
-                            target_name = game.reverse_mapping[target_input]
-                            game.phase_mgr.witch_save.add(target_name)
-                            witch.role.has_medicine = False
-                            print(f"你救 → {target_input}")
+                if action.startswith("救 ") and has_medicine:
+                    target_input = action[2:].strip()
+                    if target_input in [game.id_mapping[n] for n in game.phase_mgr.wolf_knife]:
+                        target_name = rev_map[target_input]
+                        game.phase_mgr.witch_save.add(target_name)
+                        witch.role.has_medicine = False
+                        print(f"你救 → {target_input}")
                     else:
-                        print("你放弃行动")
+                        print("救人目标无效，已放弃救人")
+                elif action.startswith("毒 ") and has_poison:
+                    target_input = action[2:].strip()
+                    if target_input in alive_ids and target_input != witch_id:
+                        target_name = rev_map[target_input]
+                        game.phase_mgr.witch_poison.add(target_name)
+                        witch.role.has_poison = False
+                        print(f"你毒 → {target_input}")
+                    else:
+                        print("毒人目标无效，已放弃毒人")
                 else:
-                    print("超时，自动放弃")
+                    print("你放弃行动" if action else "超时，自动放弃")
+                
             elif not witch.is_player and (has_poison or has_medicine):
                 tools = []
                 if has_poison: tools.append(witch_poison_tool)
                 if has_medicine: tools.append(witch_heal_tool)
                 print(f"\n【女巫行动】{witch_id} 正在决策...")
-                agent = RoleAgent("李自成", game, tools)
+                witch_name = witch.role.name
+                agent = RoleAgent(witch_name, game, tools)
                 result = agent.invoke(state, config={"configurable": {"actor": "李自成"}})
                 new_messages.append(result)
                 print(result.content.strip())
+
+        victory = check_victory(game)
+        if victory:
+            new_messages.append(AIMessage(content=f"[游戏结束] {victory}"))
+            print(f"\n[游戏结束] {victory}")
+            return {
+                "messages": new_messages,
+                "game": game,
+                "alive": list(game.alive),
+                "speaker_queue": [],
+                "voter_queue": [],
+                "votes": {},
+                "phase": "end"
+            }
 
         print("\n夜晚行动结束，天亮请睁眼！")
         print("=" * 60)
@@ -511,7 +482,6 @@ def create_game_graph():
         return {
             "messages": new_messages,
             "game": game,
-            # "phase": "day_discuss",
             "alive": list(game.alive),
             "speaker_queue": [],
             "voter_queue": [],
@@ -519,7 +489,7 @@ def create_game_graph():
 
         }
 
-    # === Register nodes ===
+
     graph.add_node("judge", judge_node)
     graph.add_node("speak", speak_node)
     graph.add_node("vote", vote_node)
