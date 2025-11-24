@@ -1,4 +1,4 @@
-# 大明暗夜录  【已完结】
+# 大明暗夜录
 **AI 驱动的历史狼人杀 · 明末权谋 · 4大史诗结局**
 
 [![Python](https://img.shields.io/badge/Python-3.11-blue)](https://www.python.org/)
